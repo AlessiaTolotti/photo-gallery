@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 
 interface Photo {
@@ -16,9 +16,33 @@ export default function PhotoGallery() {
   const [nameFilter, setNameFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [watchFolder, setWatchFolder] = useState<string>('');
+
+  // Sincronizza con la cartella esterna
+  const syncWithFolder = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/photos/watch');
+      const data = await response.json();
+      
+      if (data.watchFolder) {
+        setWatchFolder(data.watchFolder);
+      }
+      
+      if (data.photos) {
+        setPhotos(data.photos);
+      }
+      
+      if (data.message) {
+        console.log(data.message);
+      }
+    } catch (error) {
+      console.error('Errore nella sincronizzazione:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Carica le foto
   const loadPhotos = useCallback(async () => {
@@ -39,36 +63,16 @@ export default function PhotoGallery() {
   }, [nameFilter, dateFilter]);
 
   useEffect(() => {
+    // Carica foto iniziali
     loadPhotos();
+    
+    // Sincronizza con la cartella ogni 5 secondi
+    const interval = setInterval(() => {
+      syncWithFolder();
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, [loadPhotos]);
-
-  // Gestisce l'upload
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await fetch('/api/photos', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (response.ok) {
-        await loadPhotos();
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-      }
-    } catch (error) {
-      console.error('Errore nell\'upload:', error);
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('it-IT', {
@@ -129,43 +133,30 @@ export default function PhotoGallery() {
           )}
         </div>
 
-        <div className="results-count">
-          {photos.length} {photos.length === 1 ? 'foto' : 'foto'} trovate
+        <div className="sync-info">
+          <div className="results-count">
+            {photos.length} {photos.length === 1 ? 'foto' : 'foto'} trovate
+          </div>
+          <button onClick={syncWithFolder} className="sync-button">
+            <svg className="sync-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Sincronizza cartella
+          </button>
         </div>
+        
+        {watchFolder && (
+          <div className="folder-info">
+            <svg className="folder-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            <span>Cartella monitorata: <code>{watchFolder}</code></span>
+          </div>
+        )}
       </div>
 
       {/* Galleria con animazioni */}
       <div className="gallery-grid">
-        {/* Box upload stilizzato */}
-        <div 
-          onClick={() => fileInputRef.current?.click()}
-          className={`upload-box ${uploading ? 'uploading' : ''}`}
-        >
-          <div className="upload-content">
-            {uploading ? (
-              <>
-                <div className="upload-spinner"></div>
-                <p className="upload-text">Caricamento in corso...</p>
-              </>
-            ) : (
-              <>
-                <svg className="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <p className="upload-text">Aggiungi foto</p>
-                <p className="upload-subtext">Clicca o trascina qui</p>
-              </>
-            )}
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleUpload}
-            className="hidden"
-          />
-        </div>
-
         {/* Foto con effetti hover migliorati */}
         {loading ? (
           <div className="loading-container">
@@ -245,7 +236,7 @@ export default function PhotoGallery() {
           margin: 0 auto;
         }
 
-        /* Sezione filtri */
+        /* Sezione filtri migliorata */
         .filters-section {
           margin-bottom: 2rem;
           background: white;
@@ -311,93 +302,73 @@ export default function PhotoGallery() {
           box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
         }
 
-        .results-count {
+        .sync-info {
           margin-top: 1rem;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .results-count {
           color: #6b7280;
           font-size: 0.875rem;
         }
 
-        /* Griglia galleria */
+        .sync-button {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1.5rem;
+          background: #10b981;
+          color: white;
+          border: none;
+          border-radius: 0.75rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .sync-button:hover {
+          background: #059669;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .sync-icon {
+          width: 1.25rem;
+          height: 1.25rem;
+        }
+
+        .folder-info {
+          margin-top: 1rem;
+          padding: 0.75rem 1rem;
+          background: #f3f4f6;
+          border-radius: 0.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.875rem;
+        }
+
+        .folder-icon {
+          width: 1.25rem;
+          height: 1.25rem;
+          color: #6b7280;
+        }
+
+        .folder-info code {
+          background: #e5e7eb;
+          padding: 0.125rem 0.5rem;
+          border-radius: 0.25rem;
+          font-family: monospace;
+          font-size: 0.875rem;
+        }
+
+        /* Gallery Grid */
         .gallery-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
           gap: 1.5rem;
-        }
-
-        /* Box upload */
-        .upload-box {
-          aspect-ratio: 1;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 1rem;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.3s;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .upload-box::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: rgba(255, 255, 255, 0.1);
-          transform: translateX(-100%);
-          transition: transform 0.6s;
-        }
-
-        .upload-box:hover::before {
-          transform: translateX(0);
-        }
-
-        .upload-box:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 12px 24px rgba(102, 126, 234, 0.4);
-        }
-
-        .upload-box.uploading {
-          cursor: not-allowed;
-          opacity: 0.8;
-        }
-
-        .upload-content {
-          text-align: center;
-          color: white;
-          z-index: 1;
-          position: relative;
-        }
-
-        .upload-icon {
-          width: 3rem;
-          height: 3rem;
-          margin: 0 auto 1rem;
-          stroke-width: 1.5;
-        }
-
-        .upload-text {
-          font-size: 1.125rem;
-          font-weight: 600;
-          margin-bottom: 0.5rem;
-        }
-
-        .upload-subtext {
-          font-size: 0.875rem;
-          opacity: 0.9;
-        }
-
-        .upload-spinner {
-          width: 3rem;
-          height: 3rem;
-          border: 3px solid rgba(255, 255, 255, 0.3);
-          border-top-color: white;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-          margin: 0 auto 1rem;
-        }
-
-        @keyframes spin {
-          to { transform: rotate(360deg); }
         }
 
         /* Card foto */
@@ -508,6 +479,10 @@ export default function PhotoGallery() {
           border-radius: 50%;
           animation: spin 1s linear infinite;
           margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
 
         /* Modal */
