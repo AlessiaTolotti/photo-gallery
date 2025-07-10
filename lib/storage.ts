@@ -9,6 +9,11 @@ export interface Photo {
   filename: string;
   uploadDate: string;
   size: number;
+  driveData?: {
+    webContentLink?: string;
+    thumbnailLink?: string;
+    mimeType?: string;
+  };
 }
 
 // Assicura che la directory uploads esista
