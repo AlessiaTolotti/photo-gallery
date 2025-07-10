@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import DriveImage from './DriveImage';
 
 interface GoogleDriveData {
   fileId?: string;
@@ -26,7 +27,6 @@ function PhotoGallery() {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [watchFolder, setWatchFolder] = useState<string>('');
 
-  // Sincronizza con la cartella esterna
   const syncWithFolder = async () => {
     setLoading(true);
     try {
@@ -49,14 +49,12 @@ function PhotoGallery() {
       }
     } catch (err) {
       console.error('❌ Errore nella sincronizzazione Drive:', err);
-      // Se Google Drive fallisce, NON proviamo cartella locale per ora
       console.log('💾 Saltando cartella locale per deploy...');
     } finally {
       setLoading(false);
     }
   };
 
-  // Carica le foto
   const loadPhotos = useCallback(async () => {
     setLoading(true);
     try {
@@ -78,7 +76,6 @@ function PhotoGallery() {
 
   useEffect(() => {
     console.log('🚀 PhotoGallery inizializzato');
-    // Carica foto iniziali
     loadPhotos();
   }, [loadPhotos]);
 
@@ -100,7 +97,6 @@ function PhotoGallery() {
 
   return (
     <div className="photo-gallery-container">
-      {/* Filtri con design moderno */}
       <div className="filters-section">
         <div className="filter-group">
           <div className="search-wrapper">
@@ -163,7 +159,6 @@ function PhotoGallery() {
         )}
       </div>
 
-      {/* Galleria */}
       <div className="gallery-grid">
         {loading ? (
           <div className="loading-container">
@@ -188,14 +183,14 @@ function PhotoGallery() {
             >
               <div className="photo-wrapper">
                 {photo.driveData ? (
-                  <div className="drive-placeholder">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '48px', height: '48px'}}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
-                    <span>Google Drive</span>
-                  </div>
+                  <DriveImage
+                    photo={photo}
+                    fill
+                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+                    className="photo-image"
+                    style={{ objectFit: 'cover' }}
+                  />
                 ) : (
-                  // RIMOSSO: Non mostriamo più immagini locali nel deploy
                   <div className="local-placeholder">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '48px', height: '48px'}}>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -224,7 +219,6 @@ function PhotoGallery() {
         )}
       </div>
 
-      {/* Modal per visualizzare foto a schermo intero */}
       {selectedPhoto && (
         <div className="photo-modal" onClick={() => setSelectedPhoto(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -237,10 +231,21 @@ function PhotoGallery() {
               </svg>
             </button>
             <div className="modal-drive-placeholder">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '96px', height: '96px'}}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span>Anteprima non disponibile</span>
+              {selectedPhoto.driveData ? (
+                <DriveImage
+                  photo={selectedPhoto}
+                  width={800}
+                  height={600}
+                  style={{ objectFit: 'contain', width: '100%', height: 'auto' }}
+                />
+              ) : (
+                <>
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '96px', height: '96px'}}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span>Anteprima non disponibile</span>
+                </>
+              )}
             </div>
             <div className="modal-info">
               <h2>{selectedPhoto.name}</h2>
@@ -257,7 +262,6 @@ function PhotoGallery() {
           margin: 0 auto;
         }
 
-        /* Placeholder per immagini */
         .drive-placeholder, .local-placeholder, .modal-drive-placeholder {
           width: 100%;
           height: 100%;
@@ -276,7 +280,6 @@ function PhotoGallery() {
           font-size: 1.125rem;
         }
 
-        /* Empty state */
         .empty-state {
           grid-column: 1 / -1;
           text-align: center;
@@ -289,7 +292,6 @@ function PhotoGallery() {
           color: #374151;
         }
 
-        /* Sezione filtri migliorata */
         .filters-section {
           margin-bottom: 2rem;
           background: white;
@@ -417,14 +419,12 @@ function PhotoGallery() {
           font-size: 0.875rem;
         }
 
-        /* Gallery Grid */
         .gallery-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
           gap: 1.5rem;
         }
 
-        /* Card foto */
         .photo-card {
           position: relative;
           aspect-ratio: 1;
@@ -445,6 +445,10 @@ function PhotoGallery() {
           position: relative;
           width: 100%;
           height: 100%;
+        }
+
+        .photo-image {
+          object-fit: cover;
         }
 
         .photo-overlay {
@@ -512,7 +516,6 @@ function PhotoGallery() {
           color: #1f2937;
         }
 
-        /* Loading state */
         .loading-container {
           grid-column: 1 / -1;
           text-align: center;
@@ -534,7 +537,6 @@ function PhotoGallery() {
           to { transform: rotate(360deg); }
         }
 
-        /* Modal */
         .photo-modal {
           position: fixed;
           inset: 0;

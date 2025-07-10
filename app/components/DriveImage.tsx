@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import Image from 'next/image';
 
 interface DriveImageProps {
@@ -6,56 +5,60 @@ interface DriveImageProps {
     id: string;
     name: string;
     driveData?: {
+      fileId?: string;
       thumbnailLink?: string;
-      webContentLink?: string;
+      mimeType?: string;
     };
   };
-  sizes?: string;
-  className?: string;
   fill?: boolean;
   width?: number;
   height?: number;
-  priority?: boolean;
+  sizes?: string;
+  className?: string;
   style?: React.CSSProperties;
-  onClick?: () => void;
+  priority?: boolean;
+  alt?: string;
 }
 
-export default function DriveImage({ photo, fill, width, height, ...props }: DriveImageProps) {
-  const [imageUrl, setImageUrl] = useState<string>('');
-
-  useEffect(() => {
-    // Usa il thumbnail per l'anteprima (più veloce)
-    if (photo.driveData?.thumbnailLink) {
-      // Modifica il link per ottenere una risoluzione più alta
-      const highResThumbnail = photo.driveData.thumbnailLink.replace('=s220', '=s800');
-      setImageUrl(highResThumbnail);
+export default function DriveImage({ 
+  photo, 
+  alt,
+  ...imageProps 
+}: DriveImageProps) {
+  // Costruisci l'URL dell'immagine da Google Drive
+  const getImageUrl = () => {
+    if (!photo.driveData?.fileId) {
+      return '/placeholder-image.jpg'; // Immagine placeholder
     }
-  }, [photo]);
 
-  if (!imageUrl) {
-    return (
-      <div className="photo-placeholder">
-        <div className="loading-spinner"></div>
-      </div>
-    );
-  }
+    // Per le immagini di Google Drive, usiamo l'endpoint di download diretto
+    // Questo URL permette di visualizzare l'immagine senza autenticazione se il file è pubblico
+    return `https://drive.google.com/uc?export=view&id=${photo.driveData.fileId}`;
+  };
 
-  return fill ? (
+  // Se abbiamo un thumbnail link, usiamo quello per le anteprime piccole
+  const getThumbnailUrl = () => {
+    if (photo.driveData?.thumbnailLink) {
+      // Modifica la dimensione del thumbnail se necessario
+      return photo.driveData.thumbnailLink.replace('s220', 's400');
+    }
+    return getImageUrl();
+  };
+
+  // Usa thumbnail per le anteprime, immagine completa per le visualizzazioni grandi
+  const imageUrl = imageProps.width && imageProps.width > 300 ? getImageUrl() : getThumbnailUrl();
+
+  return (
     <Image
       src={imageUrl}
-      alt={photo.name}
-      fill
-      {...props}
-      unoptimized // Necessario per URL esterni
-    />
-  ) : (
-    <Image
-      src={imageUrl}
-      alt={photo.name}
-      width={width || 1200}
-      height={height || 800}
-      {...props}
-      unoptimized // Necessario per URL esterni
+      alt={alt || photo.name}
+      {...imageProps}
+      onError={(e) => {
+        // Fallback in caso di errore
+        console.warn(`Errore caricamento immagine Drive: ${photo.name}`);
+        const target = e.target as HTMLImageElement;
+        target.src = '/placeholder-image.jpg';
+      }}
     />
   );
 }
