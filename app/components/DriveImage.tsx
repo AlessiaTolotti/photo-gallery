@@ -25,28 +25,28 @@ export default function DriveImage({
   alt,
   ...imageProps 
 }: DriveImageProps) {
-  // Costruisci l'URL dell'immagine da Google Drive
+  // Per Google Drive, usiamo un proxy API che gestisce l'autenticazione
   const getImageUrl = () => {
     if (!photo.driveData?.fileId) {
-      return '/placeholder-image.jpg'; // Immagine placeholder
+      return '/placeholder-image.jpg';
     }
 
-    // Per le immagini di Google Drive, usiamo l'endpoint di download diretto
-    // Questo URL permette di visualizzare l'immagine senza autenticazione se il file è pubblico
-    return `https://drive.google.com/uc?export=view&id=${photo.driveData.fileId}`;
+    // Usa la nostra API proxy per scaricare l'immagine
+    return `/api/drive-image/${photo.driveData.fileId}`;
   };
 
-  // Se abbiamo un thumbnail link, usiamo quello per le anteprime piccole
+  // Per i thumbnail, usa il thumbnailLink se disponibile
   const getThumbnailUrl = () => {
     if (photo.driveData?.thumbnailLink) {
-      // Modifica la dimensione del thumbnail se necessario
-      return photo.driveData.thumbnailLink.replace('s220', 's400');
+      // Il thumbnailLink è pubblico e non richiede autenticazione
+      return photo.driveData.thumbnailLink;
     }
     return getImageUrl();
   };
 
-  // Usa thumbnail per le anteprime, immagine completa per le visualizzazioni grandi
-  const imageUrl = imageProps.width && imageProps.width > 300 ? getImageUrl() : getThumbnailUrl();
+  // Usa thumbnail per anteprime piccole, immagine completa per grandi
+  const shouldUseThumbnail = !imageProps.width || imageProps.width <= 400;
+  const imageUrl = shouldUseThumbnail ? getThumbnailUrl() : getImageUrl();
 
   return (
     <Image
@@ -54,11 +54,16 @@ export default function DriveImage({
       alt={alt || photo.name}
       {...imageProps}
       onError={(e) => {
-        // Fallback in caso di errore
         console.warn(`Errore caricamento immagine Drive: ${photo.name}`);
         const target = e.target as HTMLImageElement;
-        target.src = '/placeholder-image.jpg';
+        // Fallback al thumbnail se l'immagine principale fallisce
+        if (!shouldUseThumbnail && photo.driveData?.thumbnailLink) {
+          target.src = photo.driveData.thumbnailLink;
+        } else {
+          target.src = '/placeholder-image.jpg';
+        }
       }}
+      unoptimized // Importante per immagini esterne
     />
   );
 }
