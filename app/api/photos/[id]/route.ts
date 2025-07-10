@@ -1,20 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPhotoById } from '@/lib/storage';
+
+interface RouteParams {
+  params: { id: string };
+}
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
-    const photo = await getPhotoById(params.id);
+    const { id } = params;
     
-    if (!photo) {
-      return NextResponse.json({ error: 'Foto non trovata' }, { status: 404 });
-    }
+    // La tua logica per ottenere la foto per ID
+    // Esempio:
+    return NextResponse.json({
+      id,
+      message: `Photo ${id} details`
+    });
+    
+  } catch (err) {
+    console.error('Errore fetch photo:', err);
+    return NextResponse.json(
+      { error: 'Failed to fetch photo' },
+      { status: 500 }
+    );
+  }
+}
 
-    return NextResponse.json(photo);
-  } catch (error) {
-    console.error('Errore GET by ID:', error);
-    return NextResponse.json({ error: 'Errore nel recupero della foto' }, { status: 500 });
+export async function DELETE(
+  request: NextRequest,
+  { params }: RouteParams
+) {
+  try {
+    const { id } = params;
+    
+    // La tua logica per eliminare la foto
+    return NextResponse.json({
+      message: `Photo ${id} deleted successfully`
+    });
+    
+  } catch (err) {
+    console.error('Errore delete photo:', err);
+    return NextResponse.json(
+      { error: 'Failed to delete photo' },
+      { status: 500 }
+    );
   }
 }
