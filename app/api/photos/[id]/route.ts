@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-interface RouteParams {
-  params: { id: string };
-}
-
 export async function GET(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     
-    // La tua logica per ottenere la foto per ID
-    // Esempio:
     return NextResponse.json({
       id,
       message: `Photo ${id} details`
@@ -29,12 +23,11 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     
-    // La tua logica per eliminare la foto
     return NextResponse.json({
       message: `Photo ${id} deleted successfully`
     });
