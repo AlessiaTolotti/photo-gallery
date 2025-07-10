@@ -1,15 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Image from 'next/image';
-import DriveImage from './DriveImage';
 
 interface GoogleDriveData {
   fileId?: string;
   webViewLink?: string;
   thumbnailLink?: string;
   mimeType?: string;
-  // altre proprietà specifiche di Google Drive
 }
 
 interface Photo {
@@ -21,7 +18,7 @@ interface Photo {
   driveData?: GoogleDriveData;
 }
 
-export default function PhotoGallery() {
+function PhotoGallery() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [nameFilter, setNameFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -33,9 +30,11 @@ export default function PhotoGallery() {
   const syncWithFolder = async () => {
     setLoading(true);
     try {
-      // Prima prova con Google Drive
+      console.log('🔄 Tentativo sincronizzazione Google Drive...');
       const response = await fetch('/api/photos/drive-sync');
       const data = await response.json();
+      
+      console.log('📁 Risposta drive-sync:', data);
       
       if (data.folderUrl) {
         setWatchFolder(data.folderUrl);
@@ -48,23 +47,10 @@ export default function PhotoGallery() {
       if (data.message) {
         console.log(data.message);
       }
-    } catch (error) {
-      console.error('Errore nella sincronizzazione:', error);
-      // Se Google Drive fallisce, prova con la cartella locale
-      try {
-        const response = await fetch('/api/photos/watch');
-        const data = await response.json();
-        
-        if (data.watchFolder) {
-          setWatchFolder(data.watchFolder);
-        }
-        
-        if (data.photos) {
-          setPhotos(data.photos);
-        }
-      } catch (localError) {
-        console.error('Errore anche con cartella locale:', localError);
-      }
+    } catch (err) {
+      console.error('❌ Errore nella sincronizzazione Drive:', err);
+      // Se Google Drive fallisce, NON proviamo cartella locale per ora
+      console.log('💾 Saltando cartella locale per deploy...');
     } finally {
       setLoading(false);
     }
@@ -78,26 +64,22 @@ export default function PhotoGallery() {
       if (nameFilter) params.append('name', nameFilter);
       if (dateFilter) params.append('date', dateFilter);
 
+      console.log('📸 Caricamento foto...');
       const response = await fetch(`/api/photos?${params}`);
       const data = await response.json();
+      console.log('✅ Foto caricate:', data.length || 0);
       setPhotos(data);
-    } catch (error) {
-      console.error('Errore nel caricamento delle foto:', error);
+    } catch (err) {
+      console.error('❌ Errore nel caricamento delle foto:', err);
     } finally {
       setLoading(false);
     }
   }, [nameFilter, dateFilter]);
 
   useEffect(() => {
+    console.log('🚀 PhotoGallery inizializzato');
     // Carica foto iniziali
     loadPhotos();
-    
-    // Sincronizza con la cartella ogni 5 secondi
-    const interval = setInterval(() => {
-      syncWithFolder();
-    }, 5000);
-    
-    return () => clearInterval(interval);
   }, [loadPhotos]);
 
   const formatDate = (dateString: string) => {
@@ -167,7 +149,7 @@ export default function PhotoGallery() {
             <svg className="sync-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            Sincronizza cartella
+            Sincronizza con Google Drive
           </button>
         </div>
         
@@ -181,16 +163,24 @@ export default function PhotoGallery() {
         )}
       </div>
 
-      {/* Galleria con animazioni */}
+      {/* Galleria */}
       <div className="gallery-grid">
-        {/* Foto con effetti hover migliorati */}
         {loading ? (
           <div className="loading-container">
             <div className="loading-spinner"></div>
             <p>Caricamento foto...</p>
           </div>
+        ) : photos.length === 0 ? (
+          <div className="empty-state">
+            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>📁</div>
+            <h3>Nessuna foto trovata</h3>
+            <p>Connetti il tuo Google Drive per iniziare!</p>
+            <button onClick={syncWithFolder} className="sync-button" style={{ marginTop: '1rem' }}>
+              🔗 Connetti Google Drive
+            </button>
+          </div>
         ) : (
-          photos.map((photo, index) => (
+          photos.map((photo) => (
             <div 
               key={photo.id} 
               className="photo-card"
@@ -198,24 +188,20 @@ export default function PhotoGallery() {
             >
               <div className="photo-wrapper">
                 {photo.driveData ? (
-                  <DriveImage
-                    photo={photo}
-                    fill
-                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                    className="photo-image"
-                    style={{ objectFit: 'cover' }}
-                    priority={index === 0}
-                  />
+                  <div className="drive-placeholder">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '48px', height: '48px'}}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    <span>Google Drive</span>
+                  </div>
                 ) : (
-                  <Image
-                    src={`/uploads/${photo.filename}`}
-                    alt={photo.name}
-                    fill
-                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                    className="photo-image"
-                    style={{ objectFit: 'cover' }}
-                    priority={index === 0}
-                  />
+                  // RIMOSSO: Non mostriamo più immagini locali nel deploy
+                  <div className="local-placeholder">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '48px', height: '48px'}}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span>Foto Locale</span>
+                  </div>
                 )}
               </div>
               <div className="photo-overlay">
@@ -250,24 +236,12 @@ export default function PhotoGallery() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            {selectedPhoto.driveData ? (
-              <DriveImage
-                photo={selectedPhoto}
-                width={1200}
-                height={800}
-                className="modal-image"
-                style={{ objectFit: 'contain', width: '100%', height: 'auto' }}
-              />
-            ) : (
-              <Image
-                src={`/uploads/${selectedPhoto.filename}`}
-                alt={selectedPhoto.name}
-                width={1200}
-                height={800}
-                className="modal-image"
-                style={{ objectFit: 'contain', width: '100%', height: 'auto' }}
-              />
-            )}
+            <div className="modal-drive-placeholder">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '96px', height: '96px'}}>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>Anteprima non disponibile</span>
+            </div>
             <div className="modal-info">
               <h2>{selectedPhoto.name}</h2>
               <p>{formatDate(selectedPhoto.uploadDate)} • {formatFileSize(selectedPhoto.size)}</p>
@@ -281,6 +255,38 @@ export default function PhotoGallery() {
           padding: 2rem;
           max-width: 1400px;
           margin: 0 auto;
+        }
+
+        /* Placeholder per immagini */
+        .drive-placeholder, .local-placeholder, .modal-drive-placeholder {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: #f8f9fa;
+          color: #6c757d;
+          font-size: 0.875rem;
+          text-align: center;
+        }
+
+        .modal-drive-placeholder {
+          padding: 4rem;
+          font-size: 1.125rem;
+        }
+
+        /* Empty state */
+        .empty-state {
+          grid-column: 1 / -1;
+          text-align: center;
+          padding: 4rem;
+          color: #6b7280;
+        }
+
+        .empty-state h3 {
+          margin: 0 0 0.5rem 0;
+          color: #374151;
         }
 
         /* Sezione filtri migliorata */
@@ -441,10 +447,6 @@ export default function PhotoGallery() {
           height: 100%;
         }
 
-        .photo-image {
-          object-fit: cover;
-        }
-
         .photo-overlay {
           position: absolute;
           inset: 0;
@@ -593,13 +595,6 @@ export default function PhotoGallery() {
           color: #1f2937;
         }
 
-        .modal-image {
-          display: block;
-          max-height: 80vh;
-          width: auto;
-          height: auto;
-        }
-
         .modal-info {
           padding: 1.5rem;
           background: white;
@@ -621,3 +616,5 @@ export default function PhotoGallery() {
     </div>
   );
 }
+
+export default PhotoGallery;
