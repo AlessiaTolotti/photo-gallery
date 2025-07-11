@@ -76,6 +76,25 @@ function PhotoGallery() {
 
   useEffect(() => {
     console.log('🚀 PhotoGallery inizializzato');
+    
+    // Auto-sincronizzazione all'avvio
+    const initSync = async () => {
+      await syncWithFolder();
+      await loadPhotos();
+    };
+    
+    initSync();
+    
+    // Auto-sincronizzazione ogni 30 secondi (meno invasiva)
+    const interval = setInterval(() => {
+      syncWithFolder();
+    }, 30000); // 30 secondi
+    
+    return () => clearInterval(interval);
+  }, [loadPhotos]);
+  
+  // Effetto separato per ricaricare quando cambiano i filtri
+  useEffect(() => {
     loadPhotos();
   }, [loadPhotos]);
 
@@ -141,12 +160,12 @@ function PhotoGallery() {
           <div className="results-count">
             {photos.length} {photos.length === 1 ? 'foto' : 'foto'} trovate
           </div>
-          <button onClick={syncWithFolder} className="sync-button">
-            <svg className="sync-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Sincronizza con Google Drive
-          </button>
+          {loading && (
+            <div className="sync-status">
+              <div className="sync-spinner"></div>
+              <span>Sincronizzazione in corso...</span>
+            </div>
+          )}
         </div>
         
         {watchFolder && (
@@ -154,7 +173,10 @@ function PhotoGallery() {
             <svg className="folder-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
-            <span>Cartella monitorata: <code>{watchFolder}</code></span>
+            <span>📂 Connesso a Google Drive</span>
+            <a href={watchFolder} target="_blank" rel="noopener noreferrer" style={{ marginLeft: '0.5rem', color: '#3b82f6' }}>
+              Apri cartella →
+            </a>
           </div>
         )}
       </div>
@@ -169,10 +191,8 @@ function PhotoGallery() {
           <div className="empty-state">
             <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>📁</div>
             <h3>Nessuna foto trovata</h3>
-            <p>Connetti il tuo Google Drive per iniziare!</p>
-            <button onClick={syncWithFolder} className="sync-button" style={{ marginTop: '1rem' }}>
-              🔗 Connetti Google Drive
-            </button>
+            <p>Le foto verranno caricate automaticamente da Google Drive</p>
+            {loading && <div className="loading-spinner" style={{ margin: '1rem auto' }}></div>}
           </div>
         ) : (
           photos.map((photo) => (
@@ -241,7 +261,7 @@ function PhotoGallery() {
               ) : (
                 <>
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '96px', height: '96px'}}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   <span>Anteprima non disponibile</span>
                 </>
@@ -369,29 +389,21 @@ function PhotoGallery() {
           font-size: 0.875rem;
         }
 
-        .sync-button {
+        .sync-status {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          padding: 0.75rem 1.5rem;
-          background: #10b981;
-          color: white;
-          border: none;
-          border-radius: 0.75rem;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
+          color: #6b7280;
+          font-size: 0.875rem;
         }
 
-        .sync-button:hover {
-          background: #059669;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        }
-
-        .sync-icon {
-          width: 1.25rem;
-          height: 1.25rem;
+        .sync-spinner {
+          width: 1rem;
+          height: 1rem;
+          border: 2px solid #e5e7eb;
+          border-top-color: #10b981;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
         }
 
         .folder-info {

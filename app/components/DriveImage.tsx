@@ -25,45 +25,81 @@ export default function DriveImage({
   alt,
   ...imageProps 
 }: DriveImageProps) {
-  // Per Google Drive, usiamo un proxy API che gestisce l'autenticazione
+  // Debug: logga i dati della foto
+  console.log('🖼️ DriveImage rendering:', {
+    photoId: photo.id,
+    hasFileId: !!photo.driveData?.fileId,
+    hasThumbnail: !!photo.driveData?.thumbnailLink,
+    thumbnailLink: photo.driveData?.thumbnailLink
+  });
+
   const getImageUrl = () => {
     if (!photo.driveData?.fileId) {
+      console.log('❌ No fileId, using placeholder');
       return '/placeholder-image.jpg';
     }
 
-    // Usa la nostra API proxy per scaricare l'immagine
-    return `/api/drive-image/${photo.driveData.fileId}`;
+    const url = `/api/drive-image/${photo.driveData.fileId}`;
+    console.log('🔗 Using API proxy URL:', url);
+    return url;
   };
 
-  // Per i thumbnail, usa il thumbnailLink se disponibile
   const getThumbnailUrl = () => {
     if (photo.driveData?.thumbnailLink) {
-      // Il thumbnailLink è pubblico e non richiede autenticazione
-      return photo.driveData.thumbnailLink;
+      // Google Drive thumbnails sono pubblici, dovrebbero funzionare
+      const thumbUrl = photo.driveData.thumbnailLink.replace('s220', 's400');
+      console.log('👀 Using thumbnail URL:', thumbUrl);
+      return thumbUrl;
     }
     return getImageUrl();
   };
 
-  // Usa thumbnail per anteprime piccole, immagine completa per grandi
-  const shouldUseThumbnail = !imageProps.width || imageProps.width <= 400;
+  // Usa sempre il thumbnail per le anteprime (più veloce)
+  const shouldUseThumbnail = photo.driveData?.thumbnailLink;
   const imageUrl = shouldUseThumbnail ? getThumbnailUrl() : getImageUrl();
+  
+  console.log('📸 Final image URL:', imageUrl);
 
   return (
-    <Image
-      src={imageUrl}
-      alt={alt || photo.name}
-      {...imageProps}
-      onError={(e) => {
-        console.warn(`Errore caricamento immagine Drive: ${photo.name}`);
-        const target = e.target as HTMLImageElement;
-        // Fallback al thumbnail se l'immagine principale fallisce
-        if (!shouldUseThumbnail && photo.driveData?.thumbnailLink) {
-          target.src = photo.driveData.thumbnailLink;
-        } else {
-          target.src = '/placeholder-image.jpg';
-        }
-      }}
-      unoptimized // Importante per immagini esterne
-    />
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <Image
+        src={imageUrl}
+        alt={alt || photo.name}
+        {...imageProps}
+        onLoad={() => {
+          console.log('✅ Image loaded successfully:', photo.name);
+        }}
+        onError={(e) => {
+          console.error('❌ Image load error:', photo.name, imageUrl);
+          const target = e.target as HTMLImageElement;
+          
+          // Prova fallback al thumbnail se non era già quello
+          if (!shouldUseThumbnail && photo.driveData?.thumbnailLink) {
+            console.log('🔄 Trying thumbnail fallback...');
+            target.src = photo.driveData.thumbnailLink;
+          } else if (imageUrl !== '/placeholder-image.jpg') {
+            console.log('🔄 Using placeholder fallback...');
+            target.src = '/placeholder-image.jpg';
+          }
+        }}
+        unoptimized // Importante per immagini esterne
+      />
+      
+      {/* Indicatore di caricamento/debug */}
+      {process.env.NODE_ENV === 'development' && (
+        <div style={{
+          position: 'absolute',
+          top: '4px',
+          left: '4px',
+          background: 'rgba(0,0,0,0.7)',
+          color: 'white',
+          padding: '2px 6px',
+          fontSize: '10px',
+          borderRadius: '3px'
+        }}>
+          {shouldUseThumbnail ? 'THUMB' : 'API'}
+        </div>
+      )}
+    </div>
   );
 }
