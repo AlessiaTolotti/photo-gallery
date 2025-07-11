@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import DriveImage from './DriveImage';
 
 interface GoogleDriveData {
@@ -49,54 +49,26 @@ function PhotoGallery() {
       }
     } catch (err) {
       console.error('❌ Errore nella sincronizzazione Drive:', err);
-      console.log('💾 Saltando cartella locale per deploy...');
     } finally {
       setLoading(false);
     }
   };
 
-  const loadPhotos = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (nameFilter) params.append('name', nameFilter);
-      if (dateFilter) params.append('date', dateFilter);
-
-      console.log('📸 Caricamento foto...');
-      const response = await fetch(`/api/photos?${params}`);
-      const data = await response.json();
-      console.log('✅ Foto caricate:', data.length || 0);
-      setPhotos(data);
-    } catch (err) {
-      console.error('❌ Errore nel caricamento delle foto:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [nameFilter, dateFilter]);
-
   useEffect(() => {
     console.log('🚀 PhotoGallery inizializzato');
     
-    // Auto-sincronizzazione all'avvio
     const initSync = async () => {
       await syncWithFolder();
-      await loadPhotos();
     };
     
     initSync();
     
-    // Auto-sincronizzazione ogni 30 secondi (meno invasiva)
     const interval = setInterval(() => {
       syncWithFolder();
-    }, 30000); // 30 secondi
+    }, 30000);
     
     return () => clearInterval(interval);
-  }, [loadPhotos]);
-  
-  // Effetto separato per ricaricare quando cambiano i filtri
-  useEffect(() => {
-    loadPhotos();
-  }, [loadPhotos]);
+  }, []);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('it-IT', {
@@ -163,7 +135,7 @@ function PhotoGallery() {
           {loading && (
             <div className="sync-status">
               <div className="sync-spinner"></div>
-              <span>Sincronizzazione in corso...</span>
+              <span>Sincronizzazione automatica...</span>
             </div>
           )}
         </div>
@@ -174,7 +146,7 @@ function PhotoGallery() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
             <span>📂 Connesso a Google Drive</span>
-            <a href={watchFolder} target="_blank" rel="noopener noreferrer" style={{ marginLeft: '0.5rem', color: '#3b82f6' }}>
+            <a href={watchFolder} target="_blank" rel="noopener noreferrer" style={{ marginLeft: '0.5rem', color: '#3b82f6', textDecoration: 'none' }}>
               Apri cartella →
             </a>
           </div>
@@ -185,14 +157,19 @@ function PhotoGallery() {
         {loading ? (
           <div className="loading-container">
             <div className="loading-spinner"></div>
-            <p>Caricamento foto...</p>
+            <p>Sincronizzazione automatica in corso...</p>
           </div>
         ) : photos.length === 0 ? (
           <div className="empty-state">
-            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>📁</div>
-            <h3>Nessuna foto trovata</h3>
-            <p>Le foto verranno caricate automaticamente da Google Drive</p>
-            {loading && <div className="loading-spinner" style={{ margin: '1rem auto' }}></div>}
+            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>📂</div>
+            <h3>Sincronizzazione automatica</h3>
+            <p>Le foto vengono caricate automaticamente da Google Drive</p>
+            <div className="auto-sync-info">
+              <div className="loading-spinner" style={{ margin: '1rem auto' }}></div>
+              <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '1rem' }}>
+                Nessun intervento richiesto - tutto automatico
+              </p>
+            </div>
           </div>
         ) : (
           photos.map((photo) => (
@@ -261,7 +238,7 @@ function PhotoGallery() {
               ) : (
                 <>
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '96px', height: '96px'}}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   <span>Anteprima non disponibile</span>
                 </>
@@ -280,36 +257,6 @@ function PhotoGallery() {
           padding: 2rem;
           max-width: 1400px;
           margin: 0 auto;
-        }
-
-        .drive-placeholder, .local-placeholder, .modal-drive-placeholder {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background: #f8f9fa;
-          color: #6c757d;
-          font-size: 0.875rem;
-          text-align: center;
-        }
-
-        .modal-drive-placeholder {
-          padding: 4rem;
-          font-size: 1.125rem;
-        }
-
-        .empty-state {
-          grid-column: 1 / -1;
-          text-align: center;
-          padding: 4rem;
-          color: #6b7280;
-        }
-
-        .empty-state h3 {
-          margin: 0 0 0.5rem 0;
-          color: #374151;
         }
 
         .filters-section {
@@ -423,18 +370,26 @@ function PhotoGallery() {
           color: #6b7280;
         }
 
-        .folder-info code {
-          background: #e5e7eb;
-          padding: 0.125rem 0.5rem;
-          border-radius: 0.25rem;
-          font-family: monospace;
-          font-size: 0.875rem;
-        }
-
         .gallery-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
           gap: 1.5rem;
+        }
+
+        .empty-state {
+          grid-column: 1 / -1;
+          text-align: center;
+          padding: 4rem;
+          color: #6b7280;
+        }
+
+        .empty-state h3 {
+          margin: 0 0 0.5rem 0;
+          color: #374151;
+        }
+
+        .auto-sync-info {
+          margin-top: 2rem;
         }
 
         .photo-card {
@@ -461,6 +416,24 @@ function PhotoGallery() {
 
         .photo-image {
           object-fit: cover;
+        }
+
+        .drive-placeholder, .local-placeholder, .modal-drive-placeholder {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: #f8f9fa;
+          color: #6c757d;
+          font-size: 0.875rem;
+          text-align: center;
+        }
+
+        .modal-drive-placeholder {
+          padding: 4rem;
+          font-size: 1.125rem;
         }
 
         .photo-overlay {
