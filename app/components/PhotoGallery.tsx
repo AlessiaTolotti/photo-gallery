@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import DriveImage from './DriveImage';
+import Image from 'next/image';
 
 interface GoogleDriveData {
   fileId?: string;
@@ -19,7 +19,7 @@ interface Photo {
   driveData?: GoogleDriveData;
 }
 
-function PhotoGallery() {
+export default function PhotoGallery() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [nameFilter, setNameFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -27,6 +27,7 @@ function PhotoGallery() {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [watchFolder, setWatchFolder] = useState<string>('');
 
+  // Sincronizza con la cartella esterna
   const syncWithFolder = async () => {
     setLoading(true);
     try {
@@ -35,20 +36,37 @@ function PhotoGallery() {
       const data = await response.json();
       
       console.log('📁 Risposta drive-sync:', data);
+      console.log('📸 Numero foto ricevute:', data.photos?.length || 0);
       
       if (data.folderUrl) {
         setWatchFolder(data.folderUrl);
+        console.log('📂 Folder URL impostato:', data.folderUrl);
       }
       
-      if (data.photos) {
+      if (data.photos && data.photos.length > 0) {
         setPhotos(data.photos);
+        console.log('✅ Foto impostate nello stato:', data.photos.length);
+        // Debug delle prime foto
+        data.photos.slice(0, 2).forEach((photo: Photo, index: number) => {
+          console.log(`📸 Foto ${index + 1}:`, {
+            name: photo.name,
+            id: photo.id,
+            hasFileId: !!photo.driveData?.fileId,
+            hasThumbnail: !!photo.driveData?.thumbnailLink,
+            thumbnailLink: photo.driveData?.thumbnailLink
+          });
+        });
+      } else {
+        console.log('❌ Nessuna foto ricevuta da drive-sync');
+        setPhotos([]);
       }
       
       if (data.message) {
-        console.log(data.message);
+        console.log('💬 Messaggio:', data.message);
       }
-    } catch (err) {
-      console.error('❌ Errore nella sincronizzazione Drive:', err);
+    } catch (error) {
+      console.error('❌ Errore nella sincronizzazione Drive:', error);
+      setPhotos([]);
     } finally {
       setLoading(false);
     }
@@ -57,12 +75,14 @@ function PhotoGallery() {
   useEffect(() => {
     console.log('🚀 PhotoGallery inizializzato');
     
+    // Auto-sincronizzazione all'avvio
     const initSync = async () => {
       await syncWithFolder();
     };
     
     initSync();
     
+    // Auto-sincronizzazione ogni 30 secondi
     const interval = setInterval(() => {
       syncWithFolder();
     }, 30000);
@@ -86,8 +106,63 @@ function PhotoGallery() {
     else return Math.round(bytes / 1048576) + ' MB';
   };
 
+  // Componente DriveImage inline per evitare problemi di import
+  const renderDriveImage = (photo: Photo, imageProps: {
+    fill?: boolean;
+    width?: number;
+    height?: number;
+    sizes?: string;
+    className?: string;
+    style?: React.CSSProperties;
+    priority?: boolean;
+  }) => {
+    console.log('🖼️ Rendering image for:', photo.name);
+    console.log('📁 DriveData:', photo.driveData);
+    
+    const getImageUrl = () => {
+      // Se abbiamo un thumbnail, usalo (è più veloce)
+      if (photo.driveData?.thumbnailLink) {
+        const thumbUrl = photo.driveData.thumbnailLink.replace('s220', 's400');
+        console.log('👀 Using thumbnail URL:', thumbUrl);
+        return thumbUrl;
+      }
+      
+      // Altrimenti usa la nostra API proxy
+      if (photo.driveData?.fileId) {
+        const apiUrl = `/api/drive-image/${photo.driveData.fileId}`;
+        console.log('🔗 Using API proxy URL:', apiUrl);
+        return apiUrl;
+      }
+      
+      // Fallback
+      console.log('❌ No image source, using placeholder');
+      return '/placeholder-image.jpg';
+    };
+
+    const imageUrl = getImageUrl();
+    console.log('📸 Final image URL:', imageUrl);
+
+    return (
+      <Image
+        src={imageUrl}
+        alt={photo.name}
+        {...imageProps}
+        onLoad={() => {
+          console.log('✅ Image loaded successfully:', photo.name);
+        }}
+        onError={(e) => {
+          console.error('❌ Image load error for:', photo.name, 'URL:', imageUrl);
+          const target = e.target as HTMLImageElement;
+          target.src = '/placeholder-image.jpg';
+        }}
+        unoptimized
+      />
+    );
+  };
+
   return (
     <div className="photo-gallery-container">
+      {/* Filtri con design moderno */}
       <div className="filters-section">
         <div className="filter-group">
           <div className="search-wrapper">
@@ -153,6 +228,7 @@ function PhotoGallery() {
         )}
       </div>
 
+      {/* Galleria con animazioni */}
       <div className="gallery-grid">
         {loading ? (
           <div className="loading-container">
@@ -172,7 +248,7 @@ function PhotoGallery() {
             </div>
           </div>
         ) : (
-          photos.map((photo) => (
+          photos.map((photo, index) => (
             <div 
               key={photo.id} 
               className="photo-card"
@@ -180,19 +256,19 @@ function PhotoGallery() {
             >
               <div className="photo-wrapper">
                 {photo.driveData ? (
-                  <DriveImage
-                    photo={photo}
-                    fill
-                    sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
-                    className="photo-image"
-                    style={{ objectFit: 'cover' }}
-                  />
+                  renderDriveImage(photo, {
+                    fill: true,
+                    sizes: "(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw",
+                    className: "photo-image",
+                    style: { objectFit: 'cover' },
+                    priority: index === 0
+                  })
                 ) : (
-                  <div className="local-placeholder">
+                  <div className="drive-placeholder">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '48px', height: '48px'}}>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                     </svg>
-                    <span>Foto Locale</span>
+                    <span>Google Drive</span>
                   </div>
                 )}
               </div>
@@ -216,6 +292,7 @@ function PhotoGallery() {
         )}
       </div>
 
+      {/* Modal per visualizzare foto a schermo intero */}
       {selectedPhoto && (
         <div className="photo-modal" onClick={() => setSelectedPhoto(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -229,19 +306,18 @@ function PhotoGallery() {
             </button>
             <div className="modal-drive-placeholder">
               {selectedPhoto.driveData ? (
-                <DriveImage
-                  photo={selectedPhoto}
-                  width={800}
-                  height={600}
-                  style={{ objectFit: 'contain', width: '100%', height: 'auto' }}
-                />
+                renderDriveImage(selectedPhoto, {
+                  width: 800,
+                  height: 600,
+                  style: { objectFit: 'contain', width: '100%', height: 'auto' }
+                })
               ) : (
-                <>
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '96px', height: '96px'}}>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                <div style={{ padding: '4rem', textAlign: 'center', fontSize: '1.125rem' }}>
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '96px', height: '96px', margin: '0 auto 1rem'}}>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                   </svg>
-                  <span>Anteprima non disponibile</span>
-                </>
+                  <span>Google Drive Image</span>
+                </div>
               )}
             </div>
             <div className="modal-info">
@@ -259,6 +335,26 @@ function PhotoGallery() {
           margin: 0 auto;
         }
 
+        /* Placeholder per Google Drive */
+        .drive-placeholder, .modal-drive-placeholder {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: #f8f9fa;
+          color: #6c757d;
+          font-size: 0.875rem;
+          text-align: center;
+        }
+
+        .modal-drive-placeholder {
+          padding: 4rem;
+          font-size: 1.125rem;
+        }
+
+        /* Sezione filtri migliorata */
         .filters-section {
           margin-bottom: 2rem;
           background: white;
@@ -370,6 +466,7 @@ function PhotoGallery() {
           color: #6b7280;
         }
 
+        /* Gallery Grid */
         .gallery-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -392,6 +489,7 @@ function PhotoGallery() {
           margin-top: 2rem;
         }
 
+        /* Card foto */
         .photo-card {
           position: relative;
           aspect-ratio: 1;
@@ -416,24 +514,6 @@ function PhotoGallery() {
 
         .photo-image {
           object-fit: cover;
-        }
-
-        .drive-placeholder, .local-placeholder, .modal-drive-placeholder {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background: #f8f9fa;
-          color: #6c757d;
-          font-size: 0.875rem;
-          text-align: center;
-        }
-
-        .modal-drive-placeholder {
-          padding: 4rem;
-          font-size: 1.125rem;
         }
 
         .photo-overlay {
@@ -501,6 +581,7 @@ function PhotoGallery() {
           color: #1f2937;
         }
 
+        /* Loading state */
         .loading-container {
           grid-column: 1 / -1;
           text-align: center;
@@ -522,6 +603,7 @@ function PhotoGallery() {
           to { transform: rotate(360deg); }
         }
 
+        /* Modal */
         .photo-modal {
           position: fixed;
           inset: 0;
@@ -603,5 +685,3 @@ function PhotoGallery() {
     </div>
   );
 }
-
-export default PhotoGallery;
