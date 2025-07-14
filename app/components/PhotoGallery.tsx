@@ -26,46 +26,27 @@ export default function PhotoGallery() {
   const [loading, setLoading] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [watchFolder, setWatchFolder] = useState<string>('');
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
   // Sincronizza con la cartella esterna
   const syncWithFolder = async () => {
     setLoading(true);
     try {
-      console.log('🔄 Tentativo sincronizzazione Google Drive...');
       const response = await fetch('/api/photos/drive-sync');
       const data = await response.json();
       
-      console.log('📁 Risposta drive-sync:', data);
-      console.log('📸 Numero foto ricevute:', data.photos?.length || 0);
-      
       if (data.folderUrl) {
         setWatchFolder(data.folderUrl);
-        console.log('📂 Folder URL impostato:', data.folderUrl);
       }
       
       if (data.photos && data.photos.length > 0) {
         setPhotos(data.photos);
-        console.log('✅ Foto impostate nello stato:', data.photos.length);
-        // Debug delle prime foto
-        data.photos.slice(0, 2).forEach((photo: Photo, index: number) => {
-          console.log(`📸 Foto ${index + 1}:`, {
-            name: photo.name,
-            id: photo.id,
-            hasFileId: !!photo.driveData?.fileId,
-            hasThumbnail: !!photo.driveData?.thumbnailLink,
-            thumbnailLink: photo.driveData?.thumbnailLink
-          });
-        });
       } else {
-        console.log('❌ Nessuna foto ricevuta da drive-sync');
         setPhotos([]);
       }
       
-      if (data.message) {
-        console.log('💬 Messaggio:', data.message);
-      }
     } catch (error) {
-      console.error('❌ Errore nella sincronizzazione Drive:', error);
+      console.error('❌ Errore sincronizzazione:', error);
       setPhotos([]);
     } finally {
       setLoading(false);
@@ -81,13 +62,6 @@ export default function PhotoGallery() {
     };
     
     initSync();
-    
-    // Auto-sincronizzazione ogni 30 secondi
-    const interval = setInterval(() => {
-      syncWithFolder();
-    }, 30000);
-    
-    return () => clearInterval(interval);
   }, []);
 
   const formatDate = (dateString: string) => {
@@ -106,7 +80,39 @@ export default function PhotoGallery() {
     else return Math.round(bytes / 1048576) + ' MB';
   };
 
-  // Componente DriveImage inline per evitare problemi di import
+  // Gestisce errori di caricamento immagine
+  const handleImageError = (photoId: string) => {
+    console.log(`⚠️ Errore caricamento immagine per foto: ${photoId}`);
+    setImageErrors(prev => new Set(prev).add(photoId));
+  };
+
+  // Converte l'URL di Google Drive in un formato utilizzabile
+  const getDriveImageUrl = (fileId: string, size: 'thumbnail' | 'large' = 'thumbnail') => {
+    if (!fileId) return null;
+    
+    // Usa l'API diretta di Google Drive per le immagini pubbliche
+    if (size === 'thumbnail') {
+      // Per le thumbnail, usa una dimensione più piccola
+      return `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+    } else {
+      // Per le immagini grandi, usa una dimensione maggiore
+      return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
+    }
+  };
+
+  // Verifica se l'URL dell'immagine è valido
+  const isValidImageUrl = (url: string) => {
+    if (!url) return false;
+    
+    // Blocca URL di Google Drive con storage diretto che non funzionano
+    if (url.includes('drive-storage') && url.includes('googleusercontent.com')) {
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Componente DriveImage migliorato con gestione errori
   const renderDriveImage = (photo: Photo, imageProps: {
     fill?: boolean;
     width?: number;
@@ -115,50 +121,107 @@ export default function PhotoGallery() {
     className?: string;
     style?: React.CSSProperties;
     priority?: boolean;
+    isModal?: boolean;
   }) => {
-    console.log('🖼️ Rendering image for:', photo.name);
-    console.log('📁 DriveData:', photo.driveData);
+    
+    // Se c'è stato un errore per questa foto, mostra il placeholder
+    if (imageErrors.has(photo.id)) {
+      return (
+        <div className="drive-placeholder error-placeholder">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '48px', height: '48px', color: '#ef4444'}}>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <span style={{color: '#ef4444', fontSize: '0.75rem'}}>Immagine non disponibile</span>
+          <span style={{color: '#6b7280', fontSize: '0.625rem'}}>{photo.name}</span>
+        </div>
+      );
+    }
     
     const getImageUrl = () => {
-      // Se abbiamo un thumbnail, usalo (è più veloce)
-      if (photo.driveData?.thumbnailLink) {
-        const thumbUrl = photo.driveData.thumbnailLink.replace('s220', 's400');
-        console.log('👀 Using thumbnail URL:', thumbUrl);
-        return thumbUrl;
-      }
+      // Determina la dimensione basandosi su se è un modal o no
+      const size = imageProps.isModal ? 'large' : 'thumbnail';
       
-      // Altrimenti usa la nostra API proxy
+      // Se abbiamo un fileId, usa la funzione di conversione
       if (photo.driveData?.fileId) {
-        const apiUrl = `/api/drive-image/${photo.driveData.fileId}`;
-        console.log('🔗 Using API proxy URL:', apiUrl);
-        return apiUrl;
+        return getDriveImageUrl(photo.driveData.fileId, size);
       }
       
-      // Fallback
-      console.log('❌ No image source, using placeholder');
+      // Se abbiamo un thumbnailLink valido, prova a convertirlo
+      if (photo.driveData?.thumbnailLink && isValidImageUrl(photo.driveData.thumbnailLink)) {
+        // Estrai il fileId dal thumbnailLink se possibile
+        const fileIdMatch = photo.driveData.thumbnailLink.match(/\/file\/d\/([a-zA-Z0-9-_]+)/);
+        if (fileIdMatch) {
+          return getDriveImageUrl(fileIdMatch[1], size);
+        }
+        return photo.driveData.thumbnailLink;
+      }
+      
+      // Se abbiamo webViewLink, prova a estrarre il fileId
+      if (photo.driveData?.webViewLink) {
+        const fileIdMatch = photo.driveData.webViewLink.match(/\/file\/d\/([a-zA-Z0-9-_]+)/);
+        if (fileIdMatch) {
+          return getDriveImageUrl(fileIdMatch[1], size);
+        }
+      }
+      
+      // Prova il nostro proxy API come fallback
+      if (photo.driveData?.fileId) {
+        return `/api/drive-image/${photo.driveData.fileId}`;
+      }
+      
+      // Fallback finale
       return '/placeholder-image.jpg';
     };
 
     const imageUrl = getImageUrl();
-    console.log('📸 Final image URL:', imageUrl);
+    
+    if (!imageUrl) {
+      return (
+        <div className="drive-placeholder">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '48px', height: '48px'}}>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+          <span>Google Drive</span>
+        </div>
+      );
+    }
+
+    // Rimuovi isModal dalle props prima di passarle al componente Image
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { isModal, ...imagePropsForImage } = imageProps;
 
     return (
       <Image
         src={imageUrl}
         alt={photo.name}
-        {...imageProps}
-        onLoad={() => {
-          console.log('✅ Image loaded successfully:', photo.name);
-        }}
-        onError={(e) => {
-          console.error('❌ Image load error for:', photo.name, 'URL:', imageUrl);
-          const target = e.target as HTMLImageElement;
-          target.src = '/placeholder-image.jpg';
-        }}
+        {...imagePropsForImage}
         unoptimized
+        onError={() => handleImageError(photo.id)}
+        onLoad={() => {
+          // Rimuovi l'errore se l'immagine si carica con successo
+          setImageErrors(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(photo.id);
+            return newSet;
+          });
+        }}
       />
     );
   };
+
+  // Funzione per riprovare il caricamento delle immagini
+  const retryImageLoading = () => {
+    setImageErrors(new Set());
+    // Forza un re-render per riprovare il caricamento
+    setPhotos(current => [...current]);
+  };
+
+  // Filtra le foto
+  const filteredPhotos = photos.filter(photo => {
+    const matchesName = photo.name.toLowerCase().includes(nameFilter.toLowerCase());
+    const matchesDate = !dateFilter || photo.uploadDate.startsWith(dateFilter);
+    return matchesName && matchesDate;
+  });
 
   return (
     <div className="photo-gallery-container">
@@ -205,7 +268,12 @@ export default function PhotoGallery() {
 
         <div className="sync-info">
           <div className="results-count">
-            {photos.length} {photos.length === 1 ? 'foto' : 'foto'} trovate
+            {filteredPhotos.length} {filteredPhotos.length === 1 ? 'foto' : 'foto'} trovate
+            {imageErrors.size > 0 && (
+              <span className="error-count">
+                • {imageErrors.size} errore{imageErrors.size !== 1 ? 'i' : ''}
+              </span>
+            )}
           </div>
           {loading && (
             <div className="sync-status">
@@ -226,6 +294,21 @@ export default function PhotoGallery() {
             </a>
           </div>
         )}
+
+        {imageErrors.size > 0 && (
+          <div className="error-info">
+            <svg className="error-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <span>Alcune immagini non sono riuscite a caricarsi da Google Drive</span>
+            <button 
+              onClick={retryImageLoading}
+              className="retry-button"
+            >
+              Riprova caricamento
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Galleria con animazioni */}
@@ -235,20 +318,31 @@ export default function PhotoGallery() {
             <div className="loading-spinner"></div>
             <p>Sincronizzazione automatica in corso...</p>
           </div>
-        ) : photos.length === 0 ? (
+        ) : filteredPhotos.length === 0 ? (
           <div className="empty-state">
-            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>📂</div>
-            <h3>Sincronizzazione automatica</h3>
-            <p>Le foto vengono caricate automaticamente da Google Drive</p>
-            <div className="auto-sync-info">
-              <div className="loading-spinner" style={{ margin: '1rem auto' }}></div>
-              <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '1rem' }}>
-                Nessun intervento richiesto - tutto automatico
-              </p>
+            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>
+              {photos.length === 0 ? '📂' : '🔍'}
             </div>
+            <h3>
+              {photos.length === 0 ? 'Sincronizzazione automatica' : 'Nessun risultato'}
+            </h3>
+            <p>
+              {photos.length === 0 
+                ? 'Le foto vengono caricate automaticamente da Google Drive'
+                : 'Prova a modificare i filtri di ricerca'
+              }
+            </p>
+            {photos.length === 0 && (
+              <div className="auto-sync-info">
+                <div className="loading-spinner" style={{ margin: '1rem auto' }}></div>
+                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '1rem' }}>
+                  Nessun intervento richiesto - tutto automatico
+                </p>
+              </div>
+            )}
           </div>
         ) : (
-          photos.map((photo, index) => (
+          filteredPhotos.map((photo, index) => (
             <div 
               key={photo.id} 
               className="photo-card"
@@ -261,7 +355,8 @@ export default function PhotoGallery() {
                     sizes: "(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw",
                     className: "photo-image",
                     style: { objectFit: 'cover' },
-                    priority: index === 0
+                    priority: index === 0,
+                    isModal: false
                   })
                 ) : (
                   <div className="drive-placeholder">
@@ -304,15 +399,16 @@ export default function PhotoGallery() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <div className="modal-drive-placeholder">
+            <div className="modal-image-container">
               {selectedPhoto.driveData ? (
                 renderDriveImage(selectedPhoto, {
                   width: 800,
                   height: 600,
-                  style: { objectFit: 'contain', width: '100%', height: 'auto' }
+                  style: { objectFit: 'contain', width: '100%', height: 'auto' },
+                  isModal: true
                 })
               ) : (
-                <div style={{ padding: '4rem', textAlign: 'center', fontSize: '1.125rem' }}>
+                <div className="modal-drive-placeholder">
                   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{width: '96px', height: '96px', margin: '0 auto 1rem'}}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                   </svg>
@@ -347,6 +443,11 @@ export default function PhotoGallery() {
           color: #6c757d;
           font-size: 0.875rem;
           text-align: center;
+        }
+
+        .error-placeholder {
+          background: #fef2f2;
+          color: #ef4444;
         }
 
         .modal-drive-placeholder {
@@ -432,6 +533,11 @@ export default function PhotoGallery() {
           font-size: 0.875rem;
         }
 
+        .error-count {
+          color: #ef4444;
+          font-weight: 500;
+        }
+
         .sync-status {
           display: flex;
           align-items: center;
@@ -464,6 +570,41 @@ export default function PhotoGallery() {
           width: 1.25rem;
           height: 1.25rem;
           color: #6b7280;
+        }
+
+        .error-info {
+          margin-top: 1rem;
+          padding: 0.75rem 1rem;
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          border-radius: 0.5rem;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.875rem;
+          color: #dc2626;
+        }
+
+        .error-icon {
+          width: 1.25rem;
+          height: 1.25rem;
+          color: #ef4444;
+        }
+
+        .retry-button {
+          margin-left: auto;
+          padding: 0.25rem 0.75rem;
+          background: #ef4444;
+          color: white;
+          border: none;
+          border-radius: 0.375rem;
+          font-size: 0.75rem;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .retry-button:hover {
+          background: #dc2626;
         }
 
         /* Gallery Grid */
@@ -664,6 +805,14 @@ export default function PhotoGallery() {
           color: #1f2937;
         }
 
+        .modal-image-container {
+          position: relative;
+          min-height: 400px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
         .modal-info {
           padding: 1.5rem;
           background: white;
@@ -680,6 +829,29 @@ export default function PhotoGallery() {
         .modal-info p {
           color: #6b7280;
           font-size: 0.875rem;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+          .filter-group {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .search-wrapper, .date-wrapper {
+            min-width: unset;
+          }
+
+          .sync-info {
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: flex-start;
+          }
+
+          .gallery-grid {
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+          }
         }
       `}</style>
     </div>
